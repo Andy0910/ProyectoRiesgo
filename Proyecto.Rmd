@@ -1,0 +1,172 @@
+---
+title: "Proyecto Riesgo"
+author: "Andres Daniel y Julián"
+date: '2022-12-03'
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+require("quantmod");require("scatterD3");require("plotly");require("PerformanceAnalytics")
+```
+
+
+```{r}
+
+
+tickers <- c("TLT","EEM","SPY")
+
+e <- new.env()
+
+getSymbols(tickers, env=e, from="1970-01-01")
+
+e <- eapply(e,to.monthly)
+
+port <- do.call(merge,lapply(e,Ad))
+
+colnames(port) <- names(e)
+
+port <- ROC(port,type = "discrete")
+
+port[is.na(port)] <- 0
+
+port <- reclass(coredata(port) %*% c(rep(1/ncol(port), ncol(port))), match.to = port)
+
+colnames(port) <- "port"
+
+m.idx <- index(port)
+
+rm(e,tickers)
+
+getPortRisk <- function(port){
+  
+  dat <- new.env()
+  
+  ii <- 1
+  #Market Risk
+  bm <- "^GSPC"
+  
+  RISK <- ROC(Ad(to.monthly(getSymbols(bm, from="1970-01-01", auto.assign = F),name = bm)),type="discrete" )
+  
+  RISK <- RISK[m.idx]
+  
+  tmp <- merge(port,RISK)
+  
+  tmp[is.na(tmp)] <- 0
+  
+  LM <- lm(tmp[,1]~tmp[,2])
+  
+  ALPHA <- round(as.numeric(coef(LM)[1]*12),4)
+  
+  BETA <- round(as.numeric(coef(LM)[2]),4)
+  
+  COR <- round(as.numeric(cor(tmp[,1],tmp[,2])),4)
+  
+  PVAL <- cbind(round(cbind(as.numeric(summary(LM)$coefficients[,4][1]),as.numeric(summary(LM)$coefficients[,4][2])),2))
+  
+  assign(paste0("RISK",ii), as.data.frame(cbind(BETA,COR,ALPHA,PVAL,bm,"Market Risk")), envir = dat)
+  
+  ii <- ii + 1
+  
+  rm(RISK,ALPHA,BETA,COR,LM,tmp)
+  
+  #Federal Funds RAte : Interest Rate Risk
+  
+  bm = "FEDFUNDS"
+  
+  RISK <- ROC(getSymbols.FRED(bm,env=.GlobalEnv, auto.assign=F),type = "discrete")
+  RISK <- RISK[m.idx]
+  
+  tmp <- merge(port,RISK)
+  
+  tmp[is.na(tmp)] <- 0
+  
+  LM <- lm(tmp[,1]~tmp[,2])
+  
+  ALPHA <- round(as.numeric(coef(LM)[1]*12),4)
+  
+  BETA <- round(as.numeric(coef(LM)[2]),4)
+  
+  COR <- round(as.numeric(cor(tmp[,1],tmp[,2])),4)
+  
+  PVAL <- cbind(round(cbind(as.numeric(summary(LM)$coefficients[,4][1]),as.numeric(summary(LM)$coefficients[,4][2])),2))
+  
+  assign(paste0("RISK",ii), as.data.frame(cbind(BETA,COR,ALPHA,PVAL,bm,"Fed Funds Rate")), envir = dat)
+  
+  ii <- ii + 1
+  
+  rm(RISK,ALPHA,BETA,COR,LM,tmp) 
+  
+  #Sector Risk: Technology
+  
+  bm <- "XLK"
+  RISK <- ROC(Ad(to.monthly(getSymbols(bm,from="1970-01-01", auto.assign = F), name=bm)),type="discrete")
+  
+  RISK <- RISK[m.idx]
+  
+  tmp <- merge(port,RISK)
+  
+  tmp[is.na(tmp)] <- 0
+  
+  LM <- lm(tmp[,1]~tmp[,2])
+  
+  ALPHA <- round(as.numeric(coef(LM)[1]*12),4)
+  
+  BETA <- round(as.numeric(coef(LM)[2]),4)
+  
+  COR <- round(as.numeric(cor(tmp[,1],tmp[,2])),4)
+  
+  PVAL <- cbind(round(cbind(as.numeric(summary(LM)$coefficients[,4][1]),as.numeric(summary(LM)$coefficients[,4][2])),2))
+  
+  assign(paste0("RISK",ii), as.data.frame(cbind(BETA,COR,ALPHA,PVAL,bm,"Technology Sector")), envir = dat)
+  
+  ii <- ii + 1
+  
+  rm(RISK,ALPHA,BETA,COR,LM,tmp) 
+  
+  ALL <- do.call(rbind,mget(names(dat), envir=dat))
+  
+  colnames(ALL)[4:7] <- c("pval.ALPHA","pval.BETA","BM","RISK TYPE")
+  
+  ALL
+}
+
+ALL <- getPortRisk(port)
+
+ALL <- ALL[order(ALL$ALPHA, decreasing = T),]
+
+plot_ly(x=~ALL$BETA, y=~ALL$COR, z=~ALL$ALPHA, type="scatter3d", mode="markers", color = ALL$`RISK TYPE`)
+
+#Expected return : Expected return market; Risk free rate; Beta
+ExpRet <- function(ERm, Rf, Beta){
+  
+  #CAPM
+  ERp <- Rf + Beta*(ERm - Rf)
+  round(ERp,4)
+}
+
+#Stress test
+
+ERm <- -0.25
+
+ALL$DN <- ExpRet(ERm=ERm, Rf = 0.0075, Beta=as.numeric(ALL$BETA))
+
+View(ALL)
+
+
+#What would make my portfolio lose 50%
+
+EL <- function(ERp, Rf, Beta){
+  
+  ERm = ((Beta-1)*Rf + ERp)/ Beta
+  round(ERm, 4)
+}
+
+
+ERp = -0.5
+
+ALL$DN <- EL(ERp=ERp, Rf=0.0075, Beta = as.numeric(ALL$BETA))
+
+View(ALL)
+
+```
