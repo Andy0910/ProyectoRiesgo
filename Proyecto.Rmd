@@ -7,13 +7,11 @@ output: pdf_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-require("quantmod");require("scatterD3");require("plotly");require("PerformanceAnalytics")
+require("quantmod");require("scatterD3");require("plotly");require("PerformanceAnalytics");require("kableExtra")
 ```
 
 
 ```{r}
-
-
 tickers <- c("TLT","EEM","SPY")
 
 e <- new.env()
